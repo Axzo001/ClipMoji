@@ -31,11 +31,11 @@ export default class ClipMojiExtension extends Extension {
         );
 
         // Register global shortcuts
-        registerShortcuts(
-            this._settings,
-            () => this._popup.toggle('clipboard'),
-            () => this._popup.toggle('emoji')
-        );
+        this._registerAllShortcuts();
+
+        // Bind GSettings listeners to reset shortcuts dynamically when changed
+        this._shortcutClipboardId = this._settings.connect('changed::shortcut-clipboard', () => this._resetShortcuts());
+        this._shortcutEmojiId = this._settings.connect('changed::shortcut-emoji', () => this._resetShortcuts());
 
         // Watch clipboard owner changes
         const display = global.display;
@@ -54,10 +54,31 @@ export default class ClipMojiExtension extends Extension {
         this._queryClipboard();
     }
 
+    _registerAllShortcuts() {
+        registerShortcuts(
+            this._settings,
+            () => this._popup.toggle('clipboard'),
+            () => this._popup.toggle('emoji')
+        );
+    }
+
+    _resetShortcuts() {
+        unregisterShortcuts();
+        this._registerAllShortcuts();
+    }
+
     disable() {
-        // Disconnect GSettings listener
-        if (this._settings && this._historySizeChangedId) {
-            this._settings.disconnect(this._historySizeChangedId);
+        // Disconnect GSettings listeners
+        if (this._settings) {
+            if (this._historySizeChangedId) {
+                this._settings.disconnect(this._historySizeChangedId);
+            }
+            if (this._shortcutClipboardId) {
+                this._settings.disconnect(this._shortcutClipboardId);
+            }
+            if (this._shortcutEmojiId) {
+                this._settings.disconnect(this._shortcutEmojiId);
+            }
         }
         this._settings = null;
 
@@ -83,9 +104,9 @@ export default class ClipMojiExtension extends Extension {
     }
 
     _queryClipboard() {
-        if (this._settings.get_boolean('ignore-sensitive')) {
+        if (this._settings.get_boolean('ignore-sensitive') && this._selection) {
             try {
-                const mimeTypes = this._selection.get_mime_types(1) || [];
+                const mimeTypes = this._selection.get_mimetypes(1) || [];
                 const sensitiveTypes = [
                     'x-kde-passwordManagerHint',
                     'application/x-keepassxc-transfer'

@@ -18,6 +18,7 @@ export class ClipMojiPopup {
         this.settings = settings;
         this.onPaste = onPasteCallback;
         this.emojiData = null;
+        this._modalPushed = false;
 
         this._loadEmojiData();
         this._createUI();
@@ -131,6 +132,9 @@ export class ClipMojiPopup {
         Main.layoutManager.addChrome(this.curtain, {
             trackFullscreen: true
         });
+
+        // Hide curtain immediately because addChrome shows it by default
+        this.curtain.hide();
     }
 
     _onSearchChanged() {
@@ -353,6 +357,7 @@ export class ClipMojiPopup {
 
         // Start GNOME modal session to grab key/pointer focus
         if (Main.pushModal(this.curtain)) {
+            this._modalPushed = true;
             this.searchEntry.grab_key_focus();
         } else {
             console.error('ClipMoji: Failed to push modal grab');
@@ -363,7 +368,10 @@ export class ClipMojiPopup {
     close() {
         if (!this.curtain.visible) return;
 
-        Main.popModal(this.curtain);
+        if (this._modalPushed) {
+            Main.popModal(this.curtain);
+            this._modalPushed = false;
+        }
         this.curtain.hide();
         this.curtain.visible = false;
 

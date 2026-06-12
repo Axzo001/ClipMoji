@@ -66,5 +66,47 @@ export default class ClipMojiPreferences extends ExtensionPreferences {
         // Bind sensitivity of Tenor API Key entry to the Enable GIFs switch
         enableGifsRow.bind_property('active', tenorRow, 'sensitive', 
             GObject.BindingFlags.DEFAULT | GObject.BindingFlags.SYNC_CREATE);
+
+        // 7. Keyboard Shortcuts Group
+        const shortcutGroup = new Adw.PreferencesGroup({
+            title: _('Keyboard Shortcuts'),
+            description: _('Configure keyboard shortcuts (format: <Control><Super>v). Modifier names: <Control>, <Super>, <Alt>, <Shift>. Clear the text to disable.'),
+        });
+        page.add(shortcutGroup);
+
+        const isValidShortcut = (str) => {
+            const regex = /^(?:<(Control|Ctrl|Super|Alt|Shift)>)+[a-zA-Z0-9_]+$/i;
+            return regex.test(str);
+        };
+
+        // Clipboard Shortcut Row
+        const clipShortcutRow = new Adw.EntryRow({
+            title: _('Clipboard History Shortcut'),
+            text: settings.get_strv('shortcut-clipboard')[0] || ''
+        });
+        clipShortcutRow.connect('notify::text', () => {
+            const val = clipShortcutRow.text.trim();
+            if (val === '') {
+                settings.set_strv('shortcut-clipboard', []);
+            } else if (isValidShortcut(val)) {
+                settings.set_strv('shortcut-clipboard', [val]);
+            }
+        });
+        shortcutGroup.add(clipShortcutRow);
+
+        // Emoji Picker Shortcut Row
+        const emojiShortcutRow = new Adw.EntryRow({
+            title: _('Emoji Picker Shortcut'),
+            text: settings.get_strv('shortcut-emoji')[0] || ''
+        });
+        emojiShortcutRow.connect('notify::text', () => {
+            const val = emojiShortcutRow.text.trim();
+            if (val === '') {
+                settings.set_strv('shortcut-emoji', []);
+            } else if (isValidShortcut(val)) {
+                settings.set_strv('shortcut-emoji', [val]);
+            }
+        });
+        shortcutGroup.add(emojiShortcutRow);
     }
 }
