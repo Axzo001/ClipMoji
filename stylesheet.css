@@ -1,0 +1,250 @@
+/* ClipMoji GNOME Shell Extension Stylesheet */
+
+.clipmoji-curtain {
+    background-color: rgba(0, 0, 0, 0.01);
+}
+
+.clipmoji-popup {
+    background-color: #242424;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    padding: 12px;
+}
+
+.search-container {
+    padding-bottom: 8px;
+}
+
+.search-entry {
+    background-color: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    color: #ffffff;
+    padding: 8px 12px;
+    font-size: 14px;
+}
+
+.search-entry:focus {
+    border: 2px solid #3584e4;
+    background-color: rgba(255, 255, 255, 0.12);
+}
+
+.tab-bar {
+    padding: 4px 0 12px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.tab-button {
+    background-color: transparent;
+    color: rgba(255, 255, 255, 0.6);
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-size: 18px;
+    text-align: center;
+    margin-right: 4px;
+}
+
+.tab-button:hover {
+    background-color: rgba(255, 255, 255, 0.08);
+    color: #ffffff;
+}
+
+.tab-button:focus {
+    outline: none;
+}
+
+.tab-button.active {
+    background-color: #3584e4;
+    color: #ffffff;
+    font-weight: bold;
+}
+
+.content-container {
+    padding-top: 8px;
+}
+
+.tab-header {
+    padding: 4px 0 8px 0;
+}
+
+.clear-button {
+    background-color: rgba(255, 255, 255, 0.08);
+    color: #ffffff;
+    border-radius: 6px;
+    padding: 4px 12px;
+    font-size: 12px;
+}
+
+.clear-button:hover {
+    background-color: #e01b24;
+    color: #ffffff;
+}
+
+.clear-button.disabled {
+    background-color: rgba(255, 255, 255, 0.02);
+    color: rgba(255, 255, 255, 0.2);
+}
+
+.clipboard-list {
+    spacing: 6px;
+}
+
+.clipboard-row-item {
+    border-radius: 8px;
+    background-color: rgba(255, 255, 255, 0.03);
+    padding: 4px;
+    spacing: 4px;
+}
+
+.clipboard-row-item:hover {
+    background-color: rgba(255, 255, 255, 0.08);
+}
+
+.clipboard-content-button {
+    background-color: transparent;
+    color: #ffffff;
+    padding: 8px;
+    border-radius: 6px;
+    text-align: left;
+}
+
+.clipboard-item-text {
+    font-size: 13px;
+}
+
+.clipboard-item-image {
+    border-radius: 4px;
+    background-color: rgba(0, 0, 0, 0.2);
+}
+
+.icon-button {
+    background-color: transparent;
+    border-radius: 6px;
+    padding: 8px;
+}
+
+.icon-button:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+.icon-pinned {
+    color: #f6d32d;
+}
+
+.icon-unpinned {
+    color: rgba(255, 255, 255, 0.3);
+}
+
+.icon-delete {
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.delete-button:hover .icon-delete {
+    color: #e01b24;
+}
+
+.category-selector-bar {
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    margin-bottom: 8px;
+}
+
+.category-button {
+    background-color: transparent;
+    font-size: 16px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    margin-right: 4px;
+}
+
+.category-button:hover {
+    background-color: rgba(255, 255, 255, 0.08);
+}
+
+.category-button.active {
+    background-color: rgba(255, 255, 255, 0.15);
+}
+
+.emoji-grid, .symbol-grid {
+    padding: 4px;
+}
+
+.emoji-cell, .symbol-cell {
+    background-color: transparent;
+    font-size: 22px;
+    padding: 6px;
+    border-radius: 8px;
+    text-align: center;
+}
+
+.emoji-cell:hover, .symbol-cell:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+.kaomoji-grid {
+    padding: 4px;
+}
+
+.kaomoji-cell {
+    background-color: rgba(255, 255, 255, 0.04);
+    color: #ffffff;
+    font-size: 13px;
+    padding: 10px 6px;
+    border-radius: 8px;
+    text-align: center;
+}
+
+.kaomoji-cell:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+.gif-grid {
+    padding: 4px;
+}
+
+.gif-cell {
+    background-color: rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+    padding: 0;
+    overflow: hidden;
+}
+
+.gif-cell:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+    border: 1px solid #3584e4;
+}
+
+.gif-thumbnail {
+    border-radius: 8px;
+}
+
+.empty-state-label, .loading-label {
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 13px;
+    padding: 32px 0;
+}
+
+.warning-container {
+    padding: 32px 16px;
+    spacing: 8px;
+}
+
+.warning-title {
+    color: #f6d32d;
+    font-weight: bold;
+    font-size: 15px;
+}
+
+.warning-desc {
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 12px;
+    text-align: center;
+}
+
+.error-label {
+    color: #e01b24;
+    font-size: 13px;
+    padding: 32px 16px;
+    text-align: center;
+}

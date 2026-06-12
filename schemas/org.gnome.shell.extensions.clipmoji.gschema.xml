@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.clipmoji" path="/org/gnome/shell/extensions/clipmoji/">
+    <key name="shortcut-clipboard" type="as">
+      <default>['&lt;Super&gt;v']</default>
+      <summary>Shortcut to open Clipboard History</summary>
+      <description>Keyboard shortcut to trigger the Clipboard History popup.</description>
+    </key>
+    <key name="shortcut-emoji" type="as">
+      <default>['&lt;Super&gt;period', '&lt;Super&gt;semicolon']</default>
+      <summary>Shortcut to open Emoji Picker</summary>
+      <description>Keyboard shortcut to trigger the Emoji Picker popup.</description>
+    </key>
+    <key name="history-size" type="i">
+      <default>25</default>
+      <summary>Clipboard History size</summary>
+      <description>Maximum number of items to keep in the clipboard history.</description>
+    </key>
+    <key name="tenor-api-key" type="s">
+      <default>""</default>
+      <summary>Tenor API Key</summary>
+      <description>API key for Tenor GIF search. Leave empty to disable GIF search or fallback to public search.</description>
+    </key>
+  </schema>
+</schemalist>

@@ -1,0 +1,14 @@
+{
+  "uuid": "clipmoji@axz01.projects",
+  "name": "ClipMoji",
+  "description": "Windows-style Clipboard History (Super+V) and Emoji Picker (Super+.)",
+  "shell-version": [
+    "45",
+    "46",
+    "47",
+    "50"
+  ],
+  "settings-schema": "org.gnome.shell.extensions.clipmoji",
+  "url": "https://github.com/axz01/ClipMoji",
+  "version": 1
+}
