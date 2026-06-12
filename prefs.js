@@ -39,7 +39,6 @@ export default class ClipMojiPreferences extends ExtensionPreferences {
         // 4. Tenor API Key Entry Row
         const tenorRow = new Adw.EntryRow({
             title: _('Tenor GIF API Key'),
-            subtitle: _('Enter your free Tenor API key to search and paste GIFs.'),
             text: settings.get_string('tenor-api-key')
         });
         settings.bind('tenor-api-key', tenorRow, 'text', Gio.SettingsBindFlags.DEFAULT);
