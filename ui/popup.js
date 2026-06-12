@@ -112,31 +112,11 @@ export class ClipMojiPopup {
             style_class: 'tab-bar',
             x_expand: true
         });
+        this.popupBox.add_child(this.tabBar);
 
-        this.tabs = {
-            clipboard: { icon: '📋', label: 'Clipboard', object: null },
-            emoji: { icon: '😊', label: 'Emoji', object: null },
-            kaomoji: { icon: 'ツ', label: 'Kaomoji', object: null },
-            symbols: { icon: '🔣', label: 'Symbols', object: null },
-            gif: { icon: '🎞️', label: 'GIF', object: null }
-        };
-
+        this.tabs = {};
         this.tabButtons = {};
         this.activeTabId = 'clipboard';
-
-        Object.keys(this.tabs).forEach(tabId => {
-            const tabInfo = this.tabs[tabId];
-            const btn = new St.Button({
-                label: tabInfo.icon,
-                style_class: 'button tab-button',
-                can_focus: true
-            });
-            btn.connect('clicked', () => this.switchTab(tabId));
-            this.tabBar.add_child(btn);
-            this.tabButtons[tabId] = btn;
-        });
-
-        this.popupBox.add_child(this.tabBar);
 
         // 5. Active Content Area
         this.contentContainer = new St.BoxLayout({
@@ -149,7 +129,6 @@ export class ClipMojiPopup {
 
         // Add to main shell chrome
         Main.layoutManager.addChrome(this.curtain, {
-            affectsInputRegion: true,
             trackFullscreen: true
         });
     }
@@ -330,6 +309,46 @@ export class ClipMojiPopup {
         this.curtain.show();
         this.curtain.visible = true;
 
+        // Dynamic Tab Creation based on settings
+        this.tabBar.destroy_all_children();
+        this.tabButtons = {};
+
+        const enableGifs = this.settings.get_boolean('enable-gifs');
+        const oldTabs = this.tabs || {};
+
+        this.tabs = {
+            clipboard: { icon: '📋', label: 'Clipboard', object: oldTabs.clipboard?.object || null },
+            emoji: { icon: '😊', label: 'Emoji', object: oldTabs.emoji?.object || null },
+            kaomoji: { icon: 'ツ', label: 'Kaomoji', object: oldTabs.kaomoji?.object || null },
+            symbols: { icon: '🔣', label: 'Symbols', object: oldTabs.symbols?.object || null }
+        };
+
+        if (enableGifs) {
+            this.tabs.gif = { icon: '🎞️', label: 'GIF', object: oldTabs.gif?.object || null };
+        } else {
+            if (oldTabs.gif?.object) {
+                oldTabs.gif.object.destroy();
+            }
+            if (defaultTabId === 'gif') {
+                defaultTabId = 'clipboard';
+            }
+            if (this.activeTabId === 'gif') {
+                this.activeTabId = 'clipboard';
+            }
+        }
+
+        Object.keys(this.tabs).forEach(tabId => {
+            const tabInfo = this.tabs[tabId];
+            const btn = new St.Button({
+                label: tabInfo.icon,
+                style_class: 'button tab-button',
+                can_focus: true
+            });
+            btn.connect('clicked', () => this.switchTab(tabId));
+            this.tabBar.add_child(btn);
+            this.tabButtons[tabId] = btn;
+        });
+
         this.switchTab(defaultTabId);
 
         // Start GNOME modal session to grab key/pointer focus
@@ -351,7 +370,7 @@ export class ClipMojiPopup {
         this.searchEntry.set_text('');
         
         // Destruct temporary GIF downloads from active tab if needed
-        if (this.tabs.gif.object) {
+        if (this.tabs.gif && this.tabs.gif.object) {
             this.tabs.gif.object.destroy();
             this.tabs.gif.object = null; // Forces fresh instance next open
         }

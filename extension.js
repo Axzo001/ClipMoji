@@ -83,6 +83,21 @@ export default class ClipMojiExtension extends Extension {
     }
 
     _queryClipboard() {
+        if (this._settings.get_boolean('ignore-sensitive')) {
+            try {
+                const mimeTypes = this._selection.get_mime_types(1) || [];
+                const sensitiveTypes = [
+                    'x-kde-passwordManagerHint',
+                    'application/x-keepassxc-transfer'
+                ];
+                if (mimeTypes.some(m => sensitiveTypes.includes(m))) {
+                    return; // Ignore sensitive clipboard entries
+                }
+            } catch (e) {
+                console.error(`ClipMoji: Error checking sensitive clipboard MIME types: ${e.message}`);
+            }
+        }
+
         const clipboard = St.Clipboard.get_default();
         clipboard.get_text(St.ClipboardType.CLIPBOARD, (clipboard, text) => {
             if (text && text.trim()) {
