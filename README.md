@@ -29,40 +29,32 @@ ClipMoji is built to be extremely lightweight:
 
 ---
 
-## 🚀 How to Install and Run (Quick Start)
+## 🚀 How to Install
 
-We have included a setup script `install-and-test.sh` that automates linking directories, compiling schemas, and launching a test shell.
-
-Simply run:
+Simply run the installation script:
 ```bash
-./install-and-test.sh
+./install.sh
 ```
+This script symlinks ClipMoji into your local extensions directory and compiles the GSettings schemas.
+
+Once finished:
+1. Log out and log back in (or restart GNOME Shell) to reload the extensions list.
+2. Open the **Extensions** app or **Extension Manager** and toggle **ClipMoji** on!
 
 ---
 
-## 🖥️ Testing inside a Safe Sandbox (Gnome 49/50)
+## 🛠️ Developer Testing (Optional)
 
-Because shell extensions run inside the compositor process, testing directly on your primary screen can be risky. 
-When you run `./install-and-test.sh`, choose **`y`** to launch a **nested GNOME Shell window**:
+If you are a developer and want to test changes inside a safe, sandboxed window without restarting your primary desktop, you can spin up a nested GNOME Shell instance:
 ```bash
 dbus-run-session gnome-shell --devkit --wayland
 ```
-This opens a window containing a nested development compositor session where you can test things safely.
+*(Note: GNOME 49/50 uses `--devkit` instead of the deprecated `--nested` flag. If it complains about missing binaries, install `mutter-dev-bin` on Ubuntu/Debian, or `mutter-devel` on Fedora).*
 
-### Enabling the Extension in the Nested Session:
-Inside the nested desktop, open a terminal (or run this in your host terminal) and enable ClipMoji:
+Inside the nested window, enable the extension using:
 ```bash
 gnome-extensions enable clipmoji@axz01.projects
 ```
-Open a text editor in the nested screen, copy some text, and press `Super+V` or `Super+.` to test it!
-
-### 💡 Troubleshooting EBUSY / GDBus Errors
-In GNOME 49 and 50, the older `--nested` option was removed. If you try to run without it, GNOME Shell tries to take control of your main graphics card and returns `GDBus.Error:System.Error.EBUSY: Device or resource busy`. 
-
-We solve this by using the new **`--devkit`** flag. If your system warns that `mutter-devkit` is missing, you can install it via your package manager:
-- **Ubuntu/Debian:** `sudo apt install mutter-dev-bin`
-- **Fedora:** `sudo dnf install mutter-devel`
-- **Arch Linux:** Included by default with `mutter`.
 
 ---
 
