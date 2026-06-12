@@ -36,7 +36,7 @@ if [[ "$choice" =~ ^[Yy]$ ]]; then
     echo "ℹ️  Once the nested desktop starts, run this command inside it to enable ClipMoji:"
     echo "    gnome-extensions enable $UUID"
     echo ""
-    dbus-run-session gnome-shell --wayland
+    dbus-run-session gnome-shell --devkit --wayland
 else
     echo "ℹ️  To apply changes on your primary screen:"
     echo "   - On X11: Press Alt+F2, type 'r', and press Enter."
