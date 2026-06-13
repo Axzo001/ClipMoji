@@ -1,81 +1,165 @@
-# ClipMoji 📋😊✨
+# ClipMoji
 
-ClipMoji is a GNOME Shell extension that brings a seamless, unified **Clipboard History** (similar to Windows `Win+V`) and **Emoji/Kaomoji/Symbol Picker** (similar to Windows `Win+.`) experience to your Linux desktop.
+A GNOME Shell extension that brings Windows 11-style Clipboard History and Emoji Picker to your Linux desktop. One shortcut, one popup, everything you need — clipboard history, emojis, kaomojis, and symbols.
 
-Designed for modern **GNOME Shell (ESM)**, it integrates directly into GNOME's Mutter compositor process to provide a fast, Wayland-native, and fluid clipboard management utility.
-
----
-
-## 🌟 Key Features
-
-*   **📋 Clipboard History**: Automatically monitors and saves copied text.
-    *   Pin items to keep them forever (they won't be cleared).
-    *   Delete individual entries or clear all unpinned items.
-*   **😊 Emoji Picker**: A searchable grid of emojis sorted by category.
-    *   Categories: Smileys, People, Animals, Food, Activities, Travel, Objects, and Symbols.
-*   **ツ Kaomoji Tab**: Instant access to text-based emoticons (like `¯\_(ツ)_/¯` or `(* ^ ω ^)`).
-*   **🔣 Special Symbols**: Math operators, arrows, and currency signs without memorizing alt codes.
-    *   Categories: Punctuation, Math, Currency, Arrows, and General.
-*   **🎞️ Tenor GIF Search**: Search and copy/paste trending or query-matched GIFs directly from Tenor (powered by asynchronous HTTP queries).
-*   **⚡ Paste-on-Click**: Click any emoji, clipboard text, or GIF link to immediately paste it right where your text cursor is.
-*   **🔍 Open & Type**: Hit the shortcut and just start typing. The popup instantly captures search queries across emojis, symbols, and history.
+> **GNOME Shell 45, 46, 47, 50+** — uses modern ESM module syntax.
 
 ---
 
-## ⌨️ Shortcuts (Default)
+## Features
 
-*   `Ctrl + Super + V` ➡️ Open Unified Popup focused on **Clipboard History**
-*   `Ctrl + Super + .` (or `Ctrl + Super + Space`) ➡️ Open Unified Popup focused on **Emoji Picker**
-*   `Escape` ➡️ Close popup
-*   `Arrow Keys` ➡️ Navigate grids and lists
-*   `Enter` ➡️ Paste selected item
-*   `Tab` / `Shift + Tab` ➡️ Focus navigation
+### 📋 Clipboard History
+- Automatically captures everything you copy as text
+- Pin important items so they survive "Clear All"
+- Delete individual items or clear the whole history
+- Search through your clipboard history instantly
+- Configurable history size (5–200 items)
+- Respects password manager privacy flags (KeePassXC, KDE Wallet)
+
+### 😊 Emoji Picker
+- Browse hundreds of emojis in categorized tabs (Smileys, People, Animals, Food, Activities, Travel, Objects, Symbols)
+- Search by emoji name
+- Click any emoji to instantly copy and paste it
+
+### ¯\_(ツ)\_/¯ Kaomoji
+- Curated text-face emoticons organized by mood (Happy, Sad, Angry, Surprised, Action…)
+- Search and click to paste
+
+### ✦ Symbols
+- Mathematical, currency, and special characters
+- Organized by category with search
+
+### 🎞️ GIF Search (Optional)
+- Search and insert GIFs via the free Tenor API
+- Enable in Settings and add your free API key
 
 ---
 
-## ⚙️ Configuration & Customization
+## Installation
 
-Configure preferences using the **Extensions** app, **Extension Manager**, or command line:
+### From Source
+
+```bash
+git clone https://github.com/Axzo001/ClipMoji.git
+cd ClipMoji
+bash install.sh
+```
+
+Then open **GNOME Extensions** app and enable **ClipMoji**.
+
+> No restart required — the extension loads immediately after enabling.
+
+---
+
+## Usage
+
+| Action | Default Shortcut |
+|--------|-----------------|
+| Open Clipboard History | `Ctrl + Super + V` |
+| Open Emoji / Symbol Picker | `Ctrl + Super + .` |
+| Close popup | `Esc` or click outside |
+
+- **Click** any item to copy it to clipboard and auto-paste into your focused app
+- **Pin** items with the ⭐ button to protect them from "Clear All"
+- **Delete** individual items with the 🗑 button
+- **Search** — just start typing after opening the popup
+
+### Changing Shortcuts
+
+Open the extension's **Settings** → **Shortcuts** page. Click the edit button next to a shortcut, then press your desired key combination. Press Backspace to clear.
+
+---
+
+## Settings
+
+Access via **GNOME Extensions** app → ClipMoji → ⚙️ Settings, or run:
+
 ```bash
 gnome-extensions prefs clipmoji@axz01.projects
 ```
 
-Inside the Settings dialog, you can configure:
-1.  **History Size**: Maximum number of clipboard history items to retain (default: 25).
-2.  **Ignore Sensitive Data**: Do not capture copies marked as private or copied from password managers (like KeePassXC).
-3.  **Enable GIF Tab**: Show or hide the online GIF search tab.
-4.  **Tenor GIF API Key**: Paste your free API Key from the [Tenor Developer Console](https://developers.google.com/tenor) to activate the GIF tab.
-5.  **Keyboard Shortcuts**: Customize the hotkeys using standard GNOME shortcut format (e.g. `<Control><Super>v` or `<Control><Alt><Super>space`). **Changes apply instantly in real-time without reloading the extension.**
+| Setting | Default | Description |
+|---------|---------|-------------|
+| History Size | 50 | Max clipboard entries (5–200) |
+| Ignore Sensitive Data | On | Skip password manager entries |
+| Enable GIF Tab | Off | Show Tenor GIF search |
+| Tenor API Key | — | Required for GIF search |
+| Clipboard Shortcut | `Ctrl+Super+V` | Configurable |
+| Emoji Shortcut | `Ctrl+Super+.` | Configurable |
 
 ---
 
-## 🚀 Installation & Update
+## Performance
 
-Simply run the installation script:
-```bash
-./install.sh
+- **Debounced clipboard reads** — 100ms debounce prevents redundant processing
+- **Tab caching** — tab instances are created once and reused across open/close cycles
+- **Debounced disk writes** — history only written to disk 1 second after last change
+- **Lazy GIF session** — Soup.Session only created when GIF tab is opened
+- **Proper signal cleanup** — all GObject signals disconnected on `disable()`
+
+---
+
+## Development
+
+### Project Structure
+
 ```
-This script symlinks ClipMoji into your local extensions directory and compiles the GSettings schemas.
+ClipMoji/
+├── extension.js          # Entry point — Extension class, clipboard watcher, shortcuts
+├── prefs.js              # Settings UI (Libadwaita)
+├── db.js                 # Clipboard history storage (JSON)
+├── stylesheet.css        # St CSS styling
+├── metadata.json         # Extension metadata
+├── install.sh            # One-command install
+├── schemas/              # GSettings XML schema
+│   └── org.gnome.shell.extensions.clipmoji.gschema.xml
+├── ui/
+│   ├── popup.js          # Main popup container
+│   ├── clipboardTab.js   # Clipboard history list
+│   ├── emojiTab.js       # Emoji grid
+│   ├── kaomojiTab.js     # Kaomoji grid
+│   ├── symbolsTab.js     # Symbols grid
+│   └── gifTab.js         # GIF search (Tenor)
+├── utils/
+│   ├── shortcuts.js      # Global keybinding registration
+│   └── paste.js          # Ctrl+V simulation via Clutter virtual keyboard
+└── assets/
+    └── emojis.json       # Pre-compiled emoji/kaomoji/symbol database
+```
 
-Once finished, reload the extension using Extension Manager or run:
+### Reloading During Development
+
 ```bash
+# After editing any .js file:
 gnome-extensions disable clipmoji@axz01.projects
 gnome-extensions enable clipmoji@axz01.projects
+
+# After editing schemas/:
+glib-compile-schemas ~/.local/share/gnome-shell/extensions/clipmoji@axz01.projects/schemas/
 ```
-*(Note: If installing for the first time, you may need to log out and log back in to reload the GNOME extension registry.)*
+
+### Checking Logs
+
+```bash
+journalctl --user -f | grep -i clipmoji
+```
 
 ---
 
-## ⚡ Performance & Efficiency Focus
+## Requirements
 
-ClipMoji is built to be extremely lightweight:
-1.  **Debounced Writes**: To protect your SSD and prevent GNOME Shell stutter, history changes are debounced by **1 second** using `GLib.timeout_add`. Disk writes to `~/.config/clipmoji/history.json` happen only after you stop copying.
-2.  **Asynchronous Networking**: GIF search queries and thumbnail previews are fetched in the background using `Soup.Session` (Libsoup 3). They download to `/tmp/clipmoji/` and will never lock up your shell UI.
-3.  **No Memory Leaks**: All signals connected to GSettings or Mutter selection handlers are disconnected when the extension is disabled.
-4.  **Robust Modal Grab**: Keeps key grabs safe and avoids "incorrect pop" errors.
+- GNOME Shell 45, 46, 47, or 50
+- `glib-compile-schemas` (part of `libglib2.0-bin` / `glib2`)
+- Wayland or X11
 
 ---
 
-## 📜 License
+## License
 
-Distributed under the MIT License. See `LICENSE` for more details.
+MIT License — see [LICENSE](LICENSE) for details.
+
+---
+
+## Contributing
+
+Issues and PRs are welcome at [github.com/Axzo001/ClipMoji](https://github.com/Axzo001/ClipMoji/issues).

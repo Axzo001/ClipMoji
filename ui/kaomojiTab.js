@@ -1,89 +1,82 @@
-import Gio from 'gi://Gio';
-import GLib from 'gi://GLib';
-import GObject from 'gi://GObject';
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
+
+const COLUMNS = 2;
 
 export class KaomojiTab {
     constructor(popup, emojiData, onSelectCallback) {
         this.popup = popup;
         this.emojiData = emojiData;
         this.onSelect = onSelectCallback;
-        
-        this.currentCategory = 'Happy';
+
+        this.currentCategory = null;
+        this.focusableItems = [];
+
         this.widget = new St.BoxLayout({
             vertical: true,
             x_expand: true,
             y_expand: true,
-            style_class: 'tab-content-container'
+            style_class: 'tab-content-container',
         });
 
         this._createUI();
     }
 
     _createUI() {
-        // Category Selector Bar
-        this.categoryBar = new St.BoxLayout({
-            style_class: 'category-selector-bar',
-            x_expand: true
-        });
-
         const categories = Object.keys(this.emojiData.kaomojis || {});
-        
-        // Define short emoji representation for each kaomoji category
-        const categoryLabels = {
-            "Happy": "😊",
-            "Sad/Crying": "😭",
-            "Angry": "😡",
-            "Surprised": "😲",
-            "Action": "¯\\_(ツ)_/¯"
+        this.currentCategory = categories[0] || 'Happy';
+
+        const categoryIcons = {
+            'Happy': '😊', 'Sad': '😢', 'Sad/Crying': '😭',
+            'Angry': '😡', 'Surprised': '😲', 'Action': '🏃',
+            'Love': '💕', 'Greeting': '👋',
         };
 
+        // Category bar
+        this.categoryBar = new St.BoxLayout({
+            style_class: 'category-selector-bar',
+            x_expand: true,
+        });
+
         this.categoryButtons = {};
-
         categories.forEach(cat => {
+            const icon = categoryIcons[cat] || cat[0];
             const btn = new St.Button({
-                label: categoryLabels[cat] || cat,
+                label: icon,
                 style_class: 'button category-button kaomoji-cat-button',
-                can_focus: true
+                can_focus: true,
             });
-            
-            btn.connect('clicked', () => {
-                this.selectCategory(cat);
-            });
-
+            btn.connect('clicked', () => this.selectCategory(cat));
             this.categoryBar.add_child(btn);
             this.categoryButtons[cat] = btn;
         });
 
         this.widget.add_child(this.categoryBar);
 
-        // Scroll View
+        // Scroll view
         this.scrollView = new St.ScrollView({
             x_expand: true,
             y_expand: true,
             style_class: 'clipmoji-scroll-view',
             hscrollbar_policy: St.PolicyType.NEVER,
-            vscrollbar_policy: St.PolicyType.AUTOMATIC
+            vscrollbar_policy: St.PolicyType.AUTOMATIC,
         });
 
         this.gridContainer = new St.BoxLayout({
             vertical: true,
             x_expand: true,
-            style_class: 'kaomoji-grid-container'
+            style_class: 'kaomoji-grid-container',
         });
 
         this.scrollView.add_child(this.gridContainer);
         this.widget.add_child(this.scrollView);
 
-        this.focusableItems = [];
         this.selectCategory(this.currentCategory);
     }
 
     selectCategory(category) {
         this.currentCategory = category;
-        
-        // Highlight active category button
+
         Object.keys(this.categoryButtons).forEach(cat => {
             const btn = this.categoryButtons[cat];
             if (cat === category) {
@@ -100,70 +93,58 @@ export class KaomojiTab {
         this.gridContainer.destroy_all_children();
         this.focusableItems = [];
 
-        let listToShow = [];
         const kaomojisObj = this.emojiData.kaomojis || {};
+        let items = [];
 
         if (searchQuery) {
             this.categoryBar.hide();
-            
-            // Flatten and filter
-            Object.keys(kaomojisObj).forEach(cat => {
-                kaomojisObj[cat].forEach(item => {
-                    if (item.toLowerCase().includes(searchQuery.toLowerCase())) {
-                        listToShow.push(item);
+            const lowerQ = searchQuery.toLowerCase();
+            Object.values(kaomojisObj).forEach(catItems => {
+                catItems.forEach(k => {
+                    if (k.toLowerCase().includes(lowerQ)) {
+                        items.push(k);
                     }
                 });
             });
         } else {
             this.categoryBar.show();
-            listToShow = kaomojisObj[this.currentCategory] || [];
+            items = kaomojisObj[this.currentCategory] || [];
         }
 
-        if (listToShow.length === 0) {
-            const noItemsLabel = new St.Label({
-                text: 'No matching kaomojis',
+        if (items.length === 0) {
+            this.gridContainer.add_child(new St.Label({
+                text: 'No kaomojis found',
                 style_class: 'empty-state-label',
                 x_align: Clutter.ActorAlign.CENTER,
-                y_align: Clutter.ActorAlign.CENTER,
                 x_expand: true,
-                y_expand: true
-            });
-            this.gridContainer.add_child(noItemsLabel);
+                y_expand: true,
+            }));
             return;
         }
 
-        // Render as a 2-column grid since kaomojis are wide strings
-        const columns = 2;
         const gridLayout = new Clutter.GridLayout({
-            orientation: Clutter.Orientation.HORIZONTAL,
             column_spacing: 6,
-            row_spacing: 6
+            row_spacing: 6,
         });
 
         const gridWidget = new St.Widget({
             layout_manager: gridLayout,
             x_expand: true,
-            style_class: 'kaomoji-grid'
+            style_class: 'kaomoji-grid',
         });
 
-        listToShow.forEach((kaomojiStr, index) => {
-            const row = Math.floor(index / columns);
-            const col = index % columns;
+        items.forEach((k, index) => {
+            const row = Math.floor(index / COLUMNS);
+            const col = index % COLUMNS;
 
             const btn = new St.Button({
-                label: kaomojiStr,
+                label: k,
                 style_class: 'button kaomoji-cell',
                 can_focus: true,
                 reactive: true,
-                x_expand: true
+                x_expand: true,
             });
-
-            btn.connect('clicked', () => {
-                this.onSelect({
-                    type: 'text',
-                    content: kaomojiStr
-                });
-            });
+            btn.connect('clicked', () => this.onSelect({ type: 'text', content: k }));
 
             gridLayout.attach(btn, col, row, 1, 1);
             this.focusableItems.push(btn);

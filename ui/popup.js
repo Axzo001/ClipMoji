@@ -1,6 +1,5 @@
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
-import GObject from 'gi://GObject';
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
@@ -11,6 +10,9 @@ import { KaomojiTab } from './kaomojiTab.js';
 import { SymbolsTab } from './symbolsTab.js';
 import { GifTab } from './gifTab.js';
 
+const POPUP_WIDTH = 380;
+const POPUP_HEIGHT = 500;
+
 export class ClipMojiPopup {
     constructor(extension, database, settings, onPasteCallback) {
         this.extension = extension;
@@ -19,6 +21,9 @@ export class ClipMojiPopup {
         this.onPaste = onPasteCallback;
         this.emojiData = null;
         this._modalPushed = false;
+        this._visible = false;
+        // Cache tab instances across open/close cycles for performance
+        this._tabCache = {};
 
         this._loadEmojiData();
         this._createUI();
@@ -26,80 +31,66 @@ export class ClipMojiPopup {
 
     _loadEmojiData() {
         try {
-            // Load pre-compiled emoji database from assets/emojis.json
             const path = `${this.extension.path}/assets/emojis.json`;
             const file = Gio.File.new_for_path(path);
             const [success, contents] = file.load_contents(null);
             if (success) {
                 const decoder = new TextDecoder('utf-8');
                 this.emojiData = JSON.parse(decoder.decode(contents));
+            } else {
+                throw new Error('load_contents returned false');
             }
         } catch (e) {
             console.error(`ClipMoji: Failed to load emojis.json: ${e.message}`);
-            // Fallback empty struct
             this.emojiData = { emojis: {}, kaomojis: {}, symbols: {} };
         }
     }
 
     _createUI() {
-        // 1. Fullscreen transparent curtain to catch clicks outside the popup
-        this.curtain = new St.Widget({
-            style_class: 'clipmoji-curtain',
-            visible: false,
-            reactive: true,
-            x: 0,
-            y: 0
-        });
-
-        // Set curtain size to cover the entire layout screen
-        this.curtain.connect('button-press-event', (actor, event) => {
-            const clickedActor = event.get_source();
-            if (clickedActor === this.curtain) {
-                this.close();
-                return Clutter.EVENT_STOP;
-            }
-            return Clutter.EVENT_PROPAGATE;
-        });
-
-        // Handle ESC key or navigation keys at curtain level
-        this.curtain.connect('key-press-event', this._onKeyPress.bind(this));
-
-        // 2. The Inner Popup Box
+        // The main popup box — lives in uiGroup directly, positioned absolutely
         this.popupBox = new St.BoxLayout({
             vertical: true,
             style_class: 'clipmoji-popup',
             reactive: true,
-            width: 360,
-            height: 480
+            visible: false,
+            width: POPUP_WIDTH,
+            // Don't set height — let content expand naturally within max
         });
-        
-        // Prevent clicks on the popup box itself from closing the window
-        this.popupBox.connect('button-press-event', () => Clutter.EVENT_STOP);
-        this.curtain.add_child(this.popupBox);
 
-        // 3. Search Bar
+        // Prevent clicks inside popup from closing it
+        this.popupBox.connect('button-press-event', () => Clutter.EVENT_STOP);
+
+        // Add the popup to the ui group (top layer)
+        Main.layoutManager.addChrome(this.popupBox, {
+            affectsStruts: false,
+            trackFullscreen: false,
+        });
+
+        // 1. Search Bar
         this.searchContainer = new St.BoxLayout({
             style_class: 'search-container',
-            x_expand: true
+            x_expand: true,
         });
 
         this.searchEntry = new St.Entry({
             hint_text: 'Search...',
             style_class: 'search-entry',
             can_focus: true,
-            x_expand: true
+            x_expand: true,
         });
 
         this.searchEntry.clutter_text.connect('text-changed', () => {
             this._onSearchChanged();
         });
 
-        // Redirect keyboard focus from popup to search input initially
-        this.searchEntry.connect('key-press-event', (actor, event) => {
+        this.searchEntry.connect('key-press-event', (_actor, event) => {
             const symbol = event.get_key_symbol();
             if (symbol === Clutter.KEY_Down) {
-                // Focus first item in the active tab
                 this._focusFirstTabItem();
+                return Clutter.EVENT_STOP;
+            }
+            if (symbol === Clutter.KEY_Escape) {
+                this.close();
                 return Clutter.EVENT_STOP;
             }
             return Clutter.EVENT_PROPAGATE;
@@ -108,47 +99,120 @@ export class ClipMojiPopup {
         this.searchContainer.add_child(this.searchEntry);
         this.popupBox.add_child(this.searchContainer);
 
-        // 4. Tab Bar (Windows 11 Style)
+        // 2. Tab Bar
         this.tabBar = new St.BoxLayout({
             style_class: 'tab-bar',
-            x_expand: true
+            x_expand: true,
         });
         this.popupBox.add_child(this.tabBar);
 
-        this.tabs = {};
         this.tabButtons = {};
         this.activeTabId = 'clipboard';
 
-        // 5. Active Content Area
+        // 3. Content Area
         this.contentContainer = new St.BoxLayout({
             vertical: true,
             x_expand: true,
             y_expand: true,
-            style_class: 'content-container'
+            style_class: 'content-container',
         });
         this.popupBox.add_child(this.contentContainer);
 
-        // Add to main shell chrome
-        Main.layoutManager.addChrome(this.curtain, {
-            trackFullscreen: true
+        // 4. Invisible full-screen event capture overlay (for click-outside-to-close)
+        // This sits BELOW the popupBox in chrome order
+        this._clickCatcher = new St.Widget({
+            style_class: 'clipmoji-click-catcher',
+            reactive: true,
+            visible: false,
+            x: 0,
+            y: 0,
         });
 
-        // Hide curtain immediately because addChrome shows it by default
-        this.curtain.hide();
+        this._clickCatcher.connect('button-press-event', (_actor, _event) => {
+            this.close();
+            return Clutter.EVENT_STOP;
+        });
+
+        Main.layoutManager.addChrome(this._clickCatcher, {
+            affectsStruts: false,
+            trackFullscreen: false,
+        });
+
+        // Key events on stage level for escape when popup has modal
+        this._stageKeyPressId = global.stage.connect('key-press-event', (_actor, event) => {
+            if (!this._visible) return Clutter.EVENT_PROPAGATE;
+            const symbol = event.get_key_symbol();
+            if (symbol === Clutter.KEY_Escape) {
+                this.close();
+                return Clutter.EVENT_STOP;
+            }
+            return Clutter.EVENT_PROPAGATE;
+        });
     }
 
-    _onSearchChanged() {
-        const query = this.searchEntry.get_text();
-        const activeTab = this.tabs[this.activeTabId].object;
-        if (activeTab && typeof activeTab.refresh === 'function') {
-            activeTab.refresh(query);
+    _buildTabBar(enableGifs) {
+        this.tabBar.destroy_all_children();
+        this.tabButtons = {};
+
+        const tabDefs = [
+            { id: 'clipboard', icon: '📋', label: 'Clipboard' },
+            { id: 'emoji',     icon: '😊', label: 'Emoji' },
+            { id: 'kaomoji',   icon: 'ツ',  label: 'Kaomoji' },
+            { id: 'symbols',   icon: '✦',   label: 'Symbols' },
+        ];
+
+        if (enableGifs) {
+            tabDefs.push({ id: 'gif', icon: '🎞️', label: 'GIF' });
         }
+
+        tabDefs.forEach(({ id, icon }) => {
+            const btn = new St.Button({
+                label: icon,
+                style_class: 'button tab-button',
+                can_focus: true,
+            });
+            btn.connect('clicked', () => this.switchTab(id));
+            this.tabBar.add_child(btn);
+            this.tabButtons[id] = btn;
+        });
+    }
+
+    _getOrCreateTab(tabId) {
+        if (this._tabCache[tabId]) return this._tabCache[tabId];
+
+        const selectCb = (selectedItem) => {
+            this.onPaste(selectedItem);
+            this.close();
+        };
+
+        let tab;
+        switch (tabId) {
+            case 'clipboard':
+                tab = new ClipboardTab(this, this.db, selectCb);
+                break;
+            case 'emoji':
+                tab = new EmojiTab(this, this.emojiData, selectCb);
+                break;
+            case 'kaomoji':
+                tab = new KaomojiTab(this, this.emojiData, selectCb);
+                break;
+            case 'symbols':
+                tab = new SymbolsTab(this, this.emojiData, selectCb);
+                break;
+            case 'gif':
+                tab = new GifTab(this, this.settings, selectCb);
+                break;
+            default:
+                return null;
+        }
+
+        this._tabCache[tabId] = tab;
+        return tab;
     }
 
     switchTab(tabId) {
         this.activeTabId = tabId;
 
-        // Visual feedback on tab buttons
         Object.keys(this.tabButtons).forEach(id => {
             const btn = this.tabButtons[id];
             if (id === tabId) {
@@ -158,234 +222,133 @@ export class ClipMojiPopup {
             }
         });
 
-        // Destroy previous content
         this.contentContainer.destroy_all_children();
 
-        // Instantiate tab object if not done
-        const tabInfo = this.tabs[tabId];
-        if (!tabInfo.object) {
-            const selectCb = (selectedItem) => {
-                this.onPaste(selectedItem);
-                this.close();
-            };
+        const tab = this._getOrCreateTab(tabId);
+        if (!tab) return;
 
-            if (tabId === 'clipboard') {
-                tabInfo.object = new ClipboardTab(this, this.db, selectCb);
-            } else if (tabId === 'emoji') {
-                tabInfo.object = new EmojiTab(this, this.emojiData, selectCb);
-            } else if (tabId === 'kaomoji') {
-                tabInfo.object = new KaomojiTab(this, this.emojiData, selectCb);
-            } else if (tabId === 'symbols') {
-                tabInfo.object = new SymbolsTab(this, this.emojiData, selectCb);
-            } else if (tabId === 'gif') {
-                tabInfo.object = new GifTab(this, this.settings, selectCb);
-            }
+        // GIF tab needs a fresh instance each time (manages network state)
+        if (tabId === 'gif' && tab.widget.get_parent()) {
+            tab.widget.get_parent().remove_child(tab.widget);
         }
 
-        // Add widget and refresh content
-        this.contentContainer.add_child(tabInfo.object.widget);
+        this.contentContainer.add_child(tab.widget);
         this._onSearchChanged();
     }
 
     _focusFirstTabItem() {
-        const activeTab = this.tabs[this.activeTabId].object;
-        if (activeTab && activeTab.focusableItems && activeTab.focusableItems.length > 0) {
-            activeTab.focusableItems[0].grab_key_focus();
+        const tab = this._tabCache[this.activeTabId];
+        if (tab?.focusableItems?.length > 0) {
+            tab.focusableItems[0].grab_key_focus();
         }
     }
 
-    _onKeyPress(actor, event) {
-        const symbol = event.get_key_symbol();
-        
-        // Escape closes popup
-        if (symbol === Clutter.KEY_Escape) {
-            this.close();
-            return Clutter.EVENT_STOP;
+    _onSearchChanged() {
+        const query = this.searchEntry.get_text();
+        const tab = this._tabCache[this.activeTabId];
+        if (tab && typeof tab.refresh === 'function') {
+            tab.refresh(query);
         }
-
-        // Navigate back to search entry if typing normal letters
-        const activeActor = global.stage.get_key_focus();
-        if (activeActor !== this.searchEntry.clutter_text && 
-            symbol >= 32 && symbol <= 126) {
-            this.searchEntry.grab_key_focus();
-            // Let the event propagate to search entry
-            return Clutter.EVENT_PROPAGATE;
-        }
-
-        // Custom keyboard grid/list navigation using arrow keys
-        if ([Clutter.KEY_Left, Clutter.KEY_Right, Clutter.KEY_Up, Clutter.KEY_Down].includes(symbol)) {
-            return this._navigateKeyboard(symbol);
-        }
-
-        return Clutter.EVENT_PROPAGATE;
     }
 
-    _navigateKeyboard(symbol) {
-        const activeTab = this.tabs[this.activeTabId].object;
-        if (!activeTab || !activeTab.focusableItems || activeTab.focusableItems.length === 0) {
-            return Clutter.EVENT_PROPAGATE;
+    _computePosition() {
+        const monitor = Main.layoutManager.currentMonitor;
+        const [ptrX, ptrY] = global.get_pointer();
+
+        let x = ptrX - Math.floor(POPUP_WIDTH / 2);
+        let y = ptrY + 18;
+
+        // Keep within monitor bounds
+        x = Math.max(monitor.x + 8, Math.min(x, monitor.x + monitor.width - POPUP_WIDTH - 8));
+
+        if (y + POPUP_HEIGHT > monitor.y + monitor.height - 8) {
+            y = ptrY - POPUP_HEIGHT - 18;
         }
+        y = Math.max(monitor.y + 8, y);
 
-        const items = activeTab.focusableItems;
-        const activeActor = global.stage.get_key_focus();
-        const currentIndex = items.indexOf(activeActor);
-
-        if (currentIndex === -1) {
-            // If focus is currently not on any grid item, let it propagate
-            return Clutter.EVENT_PROPAGATE;
-        }
-
-        let columns = 1;
-        let itemsPerRow = 1;
-
-        if (this.activeTabId === 'emoji' || this.activeTabId === 'symbols') {
-            columns = 6;
-            itemsPerRow = 6;
-        } else if (this.activeTabId === 'kaomoji' || this.activeTabId === 'gif') {
-            columns = 2;
-            itemsPerRow = 2;
-        } else if (this.activeTabId === 'clipboard') {
-            // Clipboard items have 3 buttons per row: [ContentBtn, PinBtn, DeleteBtn]
-            columns = 3;
-            itemsPerRow = 3;
-        }
-
-        let nextIndex = currentIndex;
-
-        if (symbol === Clutter.KEY_Left) {
-            if (currentIndex % itemsPerRow > 0) {
-                nextIndex = currentIndex - 1;
-            }
-        } else if (symbol === Clutter.KEY_Right) {
-            if (currentIndex % itemsPerRow < itemsPerRow - 1 && currentIndex < items.length - 1) {
-                nextIndex = currentIndex + 1;
-            }
-        } else if (symbol === Clutter.KEY_Up) {
-            if (currentIndex >= itemsPerRow) {
-                nextIndex = currentIndex - itemsPerRow;
-            } else {
-                // Focus back to search entry
-                this.searchEntry.grab_key_focus();
-                return Clutter.EVENT_STOP;
-            }
-        } else if (symbol === Clutter.KEY_Down) {
-            if (currentIndex + itemsPerRow < items.length) {
-                nextIndex = currentIndex + itemsPerRow;
-            }
-        }
-
-        if (nextIndex !== currentIndex && items[nextIndex]) {
-            items[nextIndex].grab_key_focus();
-            
-            // If inside scroll view, scroll to ensure visible
-            if (activeTab.scrollView) {
-                // St.ScrollView handles auto scroll when focused
-            }
-            return Clutter.EVENT_STOP;
-        }
-
-        return Clutter.EVENT_PROPAGATE;
+        return [x, y];
     }
 
     open(defaultTabId = 'clipboard') {
-        const monitor = Main.layoutManager.currentMonitor;
-
-        // Position popup at pointer position
-        const [x, y] = global.get_pointer();
-        const popupWidth = 360;
-        const popupHeight = 480;
-
-        let posX = x - (popupWidth / 2);
-        posX = Math.max(monitor.x, Math.min(posX, monitor.x + monitor.width - popupWidth));
-
-        let posY = y + 15;
-        if (posY + popupHeight > monitor.y + monitor.height) {
-            posY = y - popupHeight - 15;
+        if (this._visible) {
+            // Already open — just switch tab
+            if (this.activeTabId !== defaultTabId) {
+                this.switchTab(defaultTabId);
+                this.searchEntry.grab_key_focus();
+            }
+            return;
         }
-        posY = Math.max(monitor.y, Math.min(posY, monitor.y + monitor.height - popupHeight));
-
-        this.popupBox.set_position(posX, posY);
-        
-        // Size the background curtain to cover the fullscreen workspace
-        this.curtain.set_size(monitor.width, monitor.height);
-        this.curtain.set_position(monitor.x, monitor.y);
-
-        this.curtain.show();
-        this.curtain.visible = true;
-
-        // Dynamic Tab Creation based on settings
-        this.tabBar.destroy_all_children();
-        this.tabButtons = {};
 
         const enableGifs = this.settings.get_boolean('enable-gifs');
-        const oldTabs = this.tabs || {};
 
-        this.tabs = {
-            clipboard: { icon: '📋', label: 'Clipboard', object: oldTabs.clipboard?.object || null },
-            emoji: { icon: '😊', label: 'Emoji', object: oldTabs.emoji?.object || null },
-            kaomoji: { icon: 'ツ', label: 'Kaomoji', object: oldTabs.kaomoji?.object || null },
-            symbols: { icon: '🔣', label: 'Symbols', object: oldTabs.symbols?.object || null }
-        };
-
-        if (enableGifs) {
-            this.tabs.gif = { icon: '🎞️', label: 'GIF', object: oldTabs.gif?.object || null };
-        } else {
-            if (oldTabs.gif?.object) {
-                oldTabs.gif.object.destroy();
-            }
-            if (defaultTabId === 'gif') {
-                defaultTabId = 'clipboard';
-            }
-            if (this.activeTabId === 'gif') {
-                this.activeTabId = 'clipboard';
-            }
+        // Destroy GIF tab cache if disabled (cleanup)
+        if (!enableGifs && this._tabCache.gif) {
+            this._tabCache.gif.destroy();
+            delete this._tabCache.gif;
         }
 
-        Object.keys(this.tabs).forEach(tabId => {
-            const tabInfo = this.tabs[tabId];
-            const btn = new St.Button({
-                label: tabInfo.icon,
-                style_class: 'button tab-button',
-                can_focus: true
-            });
-            btn.connect('clicked', () => this.switchTab(tabId));
-            this.tabBar.add_child(btn);
-            this.tabButtons[tabId] = btn;
-        });
-
-        this.switchTab(defaultTabId);
-
-        // Start GNOME modal session to grab key/pointer focus
-        if (Main.pushModal(this.curtain)) {
-            this._modalPushed = true;
-            this.searchEntry.grab_key_focus();
-        } else {
-            console.error('ClipMoji: Failed to push modal grab');
-            this.close();
+        // If requested tab is gif but gifs disabled, fallback
+        let tabToOpen = defaultTabId;
+        if (tabToOpen === 'gif' && !enableGifs) {
+            tabToOpen = 'clipboard';
         }
+
+        // Rebuild tab bar
+        this._buildTabBar(enableGifs);
+
+        // Position popup
+        const [x, y] = this._computePosition();
+        this.popupBox.set_position(x, y);
+
+        // Size and show click catcher
+        const monitor = Main.layoutManager.currentMonitor;
+        this._clickCatcher.set_position(monitor.x, monitor.y);
+        this._clickCatcher.set_size(monitor.width, monitor.height);
+        this._clickCatcher.show();
+        this._clickCatcher.visible = true;
+
+        // Show popup
+        this.popupBox.show();
+        this.popupBox.visible = true;
+
+        this._visible = true;
+
+        // Switch to target tab
+        this.switchTab(tabToOpen);
+
+        // Grab keyboard focus
+        this.searchEntry.set_text('');
+        this.searchEntry.grab_key_focus();
     }
 
     close() {
-        if (!this.curtain.visible) return;
+        if (!this._visible) return;
 
+        this._visible = false;
+
+        // Release modal grab if we had it
         if (this._modalPushed) {
-            Main.popModal(this.curtain);
+            Main.popModal(this.popupBox);
             this._modalPushed = false;
         }
-        this.curtain.hide();
-        this.curtain.visible = false;
 
+        this.popupBox.hide();
+        this.popupBox.visible = false;
+        this._clickCatcher.hide();
+        this._clickCatcher.visible = false;
+
+        // Reset search entry
         this.searchEntry.set_text('');
-        
-        // Destruct temporary GIF downloads from active tab if needed
-        if (this.tabs.gif && this.tabs.gif.object) {
-            this.tabs.gif.object.destroy();
-            this.tabs.gif.object = null; // Forces fresh instance next open
+
+        // Destroy GIF tab to free network resources and cached downloads
+        if (this._tabCache.gif) {
+            this._tabCache.gif.destroy();
+            delete this._tabCache.gif;
         }
     }
 
     toggle(tabId = 'clipboard') {
-        if (this.curtain.visible) {
+        if (this._visible) {
             if (this.activeTabId === tabId) {
                 this.close();
             } else {
@@ -398,17 +361,24 @@ export class ClipMojiPopup {
     }
 
     destroy() {
-        this.close();
-        Main.layoutManager.removeChrome(this.curtain);
-        
-        // Cleanup tabs
-        Object.keys(this.tabs).forEach(tabId => {
-            if (this.tabs[tabId].object && typeof this.tabs[tabId].object.destroy === 'function') {
-                this.tabs[tabId].object.destroy();
-            }
-            this.tabs[tabId].object = null;
-        });
+        // Disconnect stage key handler
+        if (this._stageKeyPressId) {
+            global.stage.disconnect(this._stageKeyPressId);
+            this._stageKeyPressId = null;
+        }
 
-        this.curtain.destroy();
+        this.close();
+
+        // Destroy all cached tabs
+        Object.values(this._tabCache).forEach(tab => {
+            if (typeof tab.destroy === 'function') tab.destroy();
+        });
+        this._tabCache = {};
+
+        Main.layoutManager.removeChrome(this._clickCatcher);
+        Main.layoutManager.removeChrome(this.popupBox);
+
+        this._clickCatcher.destroy();
+        this.popupBox.destroy();
     }
 }

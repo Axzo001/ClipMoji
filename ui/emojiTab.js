@@ -1,92 +1,82 @@
-import Gio from 'gi://Gio';
-import GLib from 'gi://GLib';
-import GObject from 'gi://GObject';
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
+
+const COLUMNS = 8; // Emoji grid columns
 
 export class EmojiTab {
     constructor(popup, emojiData, onSelectCallback) {
         this.popup = popup;
-        this.emojiData = emojiData; // The parsed JSON content of assets/emojis.json
+        this.emojiData = emojiData;
         this.onSelect = onSelectCallback;
-        
-        this.currentCategory = 'Smileys';
+
+        this.currentCategory = null;
+        this.focusableItems = [];
+
         this.widget = new St.BoxLayout({
             vertical: true,
             x_expand: true,
             y_expand: true,
-            style_class: 'tab-content-container'
+            style_class: 'tab-content-container',
         });
 
         this._createUI();
     }
 
     _createUI() {
-        // Category Selector Bar
+        const categories = Object.keys(this.emojiData.emojis || {});
+        this.currentCategory = categories[0] || 'Smileys';
+
+        // Category bar (emoji icons)
         this.categoryBar = new St.BoxLayout({
             style_class: 'category-selector-bar',
-            x_expand: true
+            x_expand: true,
         });
 
-        const categories = Object.keys(this.emojiData.emojis || {});
-        
-        // Define representative icons or short labels for each emoji category
-        const categoryLabels = {
-            "Smileys": "😀",
-            "People": "👋",
-            "Animals": "🐱",
-            "Food": "🍇",
-            "Activities": "🎮",
-            "Travel": "🚗",
-            "Objects": "💻",
-            "Symbols": "❤️"
+        const categoryIcons = {
+            'Smileys': '😀', 'People': '👋', 'Animals': '🐱',
+            'Food': '🍕', 'Activities': '⚽', 'Travel': '✈️',
+            'Objects': '💡', 'Symbols': '❤️', 'Flags': '🏳️',
         };
 
         this.categoryButtons = {};
-
         categories.forEach(cat => {
+            const icon = categoryIcons[cat] || cat[0];
             const btn = new St.Button({
-                label: categoryLabels[cat] || cat.substring(0, 2),
+                label: icon,
                 style_class: 'button category-button',
-                can_focus: true
+                can_focus: true,
             });
-            
-            btn.connect('clicked', () => {
-                this.selectCategory(cat);
-            });
-
+            btn.connect('clicked', () => this.selectCategory(cat));
             this.categoryBar.add_child(btn);
             this.categoryButtons[cat] = btn;
         });
 
         this.widget.add_child(this.categoryBar);
 
-        // Scroll View
+        // Scroll view
         this.scrollView = new St.ScrollView({
             x_expand: true,
             y_expand: true,
             style_class: 'clipmoji-scroll-view',
             hscrollbar_policy: St.PolicyType.NEVER,
-            vscrollbar_policy: St.PolicyType.AUTOMATIC
+            vscrollbar_policy: St.PolicyType.AUTOMATIC,
         });
 
         this.gridContainer = new St.BoxLayout({
             vertical: true,
             x_expand: true,
-            style_class: 'emoji-grid-container'
+            style_class: 'emoji-grid-container',
         });
 
         this.scrollView.add_child(this.gridContainer);
         this.widget.add_child(this.scrollView);
 
-        this.focusableItems = [];
         this.selectCategory(this.currentCategory);
     }
 
     selectCategory(category) {
         this.currentCategory = category;
-        
-        // Highlight active category button
+
         Object.keys(this.categoryButtons).forEach(cat => {
             const btn = this.categoryButtons[cat];
             if (cat === category) {
@@ -100,76 +90,68 @@ export class EmojiTab {
     }
 
     refresh(searchQuery = '') {
-        // Clear grid container
         this.gridContainer.destroy_all_children();
         this.focusableItems = [];
 
-        // Determine list of emojis to show
-        let listToShow = [];
         const emojisObj = this.emojiData.emojis || {};
+        let items = [];
 
         if (searchQuery) {
-            this.categoryBar.hide(); // Hide category bar when searching
-            
-            // Flatten and filter emojis
-            Object.keys(emojisObj).forEach(cat => {
-                emojisObj[cat].forEach(item => {
-                    if (item.name.toLowerCase().includes(searchQuery.toLowerCase())) {
-                        listToShow.push(item);
+            this.categoryBar.hide();
+            const lowerQ = searchQuery.toLowerCase();
+            Object.values(emojisObj).forEach(catItems => {
+                catItems.forEach(item => {
+                    if (item.name.toLowerCase().includes(lowerQ)) {
+                        items.push(item);
                     }
                 });
             });
         } else {
             this.categoryBar.show();
-            listToShow = emojisObj[this.currentCategory] || [];
+            items = emojisObj[this.currentCategory] || [];
         }
 
-        if (listToShow.length === 0) {
-            const noItemsLabel = new St.Label({
-                text: 'No matching emojis',
+        if (items.length === 0) {
+            this.gridContainer.add_child(new St.Label({
+                text: 'No emojis found',
                 style_class: 'empty-state-label',
                 x_align: Clutter.ActorAlign.CENTER,
-                y_align: Clutter.ActorAlign.CENTER,
                 x_expand: true,
-                y_expand: true
-            });
-            this.gridContainer.add_child(noItemsLabel);
+                y_expand: true,
+            }));
             return;
         }
 
-        // Render as a grid
-        const columns = 6;
+        this._renderGrid(items, COLUMNS, item => item.char, item => ({
+            type: 'text',
+            content: item.char,
+        }), 'emoji-cell');
+    }
+
+    _renderGrid(items, columns, labelFn, itemFn, cellClass) {
         const gridLayout = new Clutter.GridLayout({
-            orientation: Clutter.Orientation.HORIZONTAL,
-            column_spacing: 6,
-            row_spacing: 6
+            column_spacing: 4,
+            row_spacing: 4,
         });
 
         const gridWidget = new St.Widget({
             layout_manager: gridLayout,
             x_expand: true,
-            style_class: 'emoji-grid'
+            style_class: 'emoji-grid',
         });
 
-        listToShow.forEach((item, index) => {
+        items.forEach((item, index) => {
             const row = Math.floor(index / columns);
             const col = index % columns;
 
             const btn = new St.Button({
-                label: item.char,
-                style_class: 'button emoji-cell',
+                label: labelFn(item),
+                style_class: `button ${cellClass}`,
                 can_focus: true,
-                reactive: true
+                reactive: true,
             });
-
-            // Set tooltips if possible using the "name" property
             btn.set_track_hover(true);
-            btn.connect('clicked', () => {
-                this.onSelect({
-                    type: 'text',
-                    content: item.char
-                });
-            });
+            btn.connect('clicked', () => this.onSelect(itemFn(item)));
 
             gridLayout.attach(btn, col, row, 1, 1);
             this.focusableItems.push(btn);

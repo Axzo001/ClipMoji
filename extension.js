@@ -1,7 +1,6 @@
 import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import Meta from 'gi://Meta';
-import Shell from 'gi://Shell';
 import St from 'gi://St';
 import GLib from 'gi://GLib';
 
@@ -15,43 +14,102 @@ export default class ClipMojiExtension extends Extension {
         this._settings = this.getSettings();
         this._db = new ClipMojiDatabase();
         this._isPasting = false;
-        
-        // Listen to settings changes for max history size
-        this._db.setMaxSize(this._settings.get_int('history-size'));
-        this._historySizeChangedId = this._settings.connect('changed::history-size', () => {
-            this._db.setMaxSize(this._settings.get_int('history-size'));
-        });
+        this._queryDebounceId = 0;
 
-        // Initialize UI popup manager
+        // Apply saved history size
+        this._db.setMaxSize(this._settings.get_int('history-size'));
+
+        // Settings listeners
+        this._settingsSignals = [
+            this._settings.connect('changed::history-size', () => {
+                this._db.setMaxSize(this._settings.get_int('history-size'));
+            }),
+            this._settings.connect('changed::shortcut-clipboard', () => this._resetShortcuts()),
+            this._settings.connect('changed::shortcut-emoji', () => this._resetShortcuts()),
+        ];
+
+        // Initialize popup
         this._popup = new ClipMojiPopup(
             this,
             this._db,
             this._settings,
-            this._onItemSelected.bind(this)
+            item => this._onItemSelected(item)
         );
 
-        // Register global shortcuts
+        // Register shortcuts
         this._registerAllShortcuts();
 
-        // Bind GSettings listeners to reset shortcuts dynamically when changed
-        this._shortcutClipboardId = this._settings.connect('changed::shortcut-clipboard', () => this._resetShortcuts());
-        this._shortcutEmojiId = this._settings.connect('changed::shortcut-emoji', () => this._resetShortcuts());
+        // Clipboard monitoring via Meta.Selection
+        this._setupClipboardWatcher();
+    }
 
-        // Watch clipboard owner changes
-        const display = global.display;
-        this._selection = display.get_selection();
-        
-        this._ownerChangedId = this._selection.connect('owner-changed', (selection, selectionType) => {
-            // 1 represents Meta.SelectionType.CLIPBOARD
-            const isClipboard = (selectionType === 1 || (Meta.SelectionType && selectionType === Meta.SelectionType.CLIPBOARD));
-            
-            if (isClipboard && !this._isPasting) {
-                this._queryClipboard();
+    _setupClipboardWatcher() {
+        try {
+            // global.display.get_selection() provides the Meta.Selection object
+            this._selection = global.display.get_selection();
+            this._ownerChangedId = this._selection.connect('owner-changed',
+                (_sel, selectionType, _source) => {
+                    // Meta.SelectionType.CLIPBOARD == 2 on recent GNOME
+                    // We check both the enum and numeric value for safety
+                    const clipType = Meta.SelectionType.CLIPBOARD;
+                    if (selectionType === clipType && !this._isPasting) {
+                        this._debouncedQueryClipboard();
+                    }
+                }
+            );
+        } catch (e) {
+            console.error(`ClipMoji: Failed to set up clipboard watcher: ${e.message}`);
+        }
+    }
+
+    _debouncedQueryClipboard() {
+        // Debounce to avoid duplicate events from the same copy action
+        if (this._queryDebounceId) {
+            GLib.source_remove(this._queryDebounceId);
+            this._queryDebounceId = 0;
+        }
+        this._queryDebounceId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => {
+            this._queryDebounceId = 0;
+            this._queryClipboard();
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    _queryClipboard() {
+        if (!this._settings) return;
+
+        // Check for sensitive data (password manager hints)
+        if (this._settings.get_boolean('ignore-sensitive') && this._selection) {
+            try {
+                // Meta.SelectionType.CLIPBOARD = 2 in GNOME 45+
+                const mimeTypes = this._selection.get_mimetypes(Meta.SelectionType.CLIPBOARD);
+                const sensitiveHints = [
+                    'x-kde-passwordManagerHint',
+                    'application/x-keepassxc-transfer',
+                    'x-secret-content-type',
+                ];
+                if (mimeTypes.some(m => sensitiveHints.includes(m))) {
+                    return;
+                }
+            } catch (e) {
+                // get_mimetypes might fail if there's no clipboard owner — that's fine
+            }
+        }
+
+        // Read text from clipboard
+        const clipboard = St.Clipboard.get_default();
+        clipboard.get_text(St.ClipboardType.CLIPBOARD, (_cb, text) => {
+            if (!text || !text.trim()) return;
+            if (!this._db) return;  // Extension might have been disabled
+
+            const added = this._db.addText(text);
+
+            // If clipboard tab is active and popup is open, refresh it
+            if (added && this._popup?._visible && this._popup?.activeTabId === 'clipboard') {
+                const clipTab = this._popup._tabCache?.clipboard;
+                clipTab?.refresh(this._popup.searchEntry?.get_text() ?? '');
             }
         });
-
-        // Query initial clipboard content
-        this._queryClipboard();
     }
 
     _registerAllShortcuts() {
@@ -68,90 +126,54 @@ export default class ClipMojiExtension extends Extension {
     }
 
     disable() {
-        // Disconnect GSettings listeners
-        if (this._settings) {
-            if (this._historySizeChangedId) {
-                this._settings.disconnect(this._historySizeChangedId);
-            }
-            if (this._shortcutClipboardId) {
-                this._settings.disconnect(this._shortcutClipboardId);
-            }
-            if (this._shortcutEmojiId) {
-                this._settings.disconnect(this._shortcutEmojiId);
-            }
+        // Remove debounce timer
+        if (this._queryDebounceId) {
+            GLib.source_remove(this._queryDebounceId);
+            this._queryDebounceId = 0;
         }
-        this._settings = null;
 
-        // Disconnect clipboard listener
+        // Disconnect settings signals
+        if (this._settings) {
+            this._settingsSignals?.forEach(id => this._settings.disconnect(id));
+            this._settingsSignals = null;
+        }
+
+        // Disconnect clipboard watcher
         if (this._selection && this._ownerChangedId) {
             this._selection.disconnect(this._ownerChangedId);
+            this._ownerChangedId = null;
         }
         this._selection = null;
 
-        // Unregister shortcuts
+        // Remove shortcuts
         unregisterShortcuts();
 
-        // Destroy UI
-        if (this._popup) {
-            this._popup.destroy();
-            this._popup = null;
-        }
+        // Destroy popup
+        this._popup?.destroy();
+        this._popup = null;
 
-        if (this._db) {
-            this._db.flush();
-            this._db = null;
-        }
-    }
+        // Flush and release DB
+        this._db?.flush();
+        this._db = null;
 
-    _queryClipboard() {
-        if (this._settings.get_boolean('ignore-sensitive') && this._selection) {
-            try {
-                const mimeTypes = this._selection.get_mimetypes(1) || [];
-                const sensitiveTypes = [
-                    'x-kde-passwordManagerHint',
-                    'application/x-keepassxc-transfer'
-                ];
-                if (mimeTypes.some(m => sensitiveTypes.includes(m))) {
-                    return; // Ignore sensitive clipboard entries
-                }
-            } catch (e) {
-                console.error(`ClipMoji: Error checking sensitive clipboard MIME types: ${e.message}`);
-            }
-        }
-
-        const clipboard = St.Clipboard.get_default();
-        clipboard.get_text(St.ClipboardType.CLIPBOARD, (clipboard, text) => {
-            if (text && text.trim()) {
-                // If it's a new copy, store it
-                const addedItem = this._db.addText(text);
-                // If popup is visible and active on clipboard tab, refresh list
-                if (addedItem && this._popup && this._popup.curtain.visible && this._popup.activeTabId === 'clipboard') {
-                    const clipboardTab = this._popup.tabs.clipboard.object;
-                    if (clipboardTab) {
-                        clipboardTab.refresh(this._popup.searchEntry.get_text());
-                    }
-                }
-            }
-        });
+        this._settings = null;
     }
 
     _onItemSelected(item) {
-        if (item.type === 'text') {
-            // 1. Set pasting lock flag
-            this._isPasting = true;
+        if (item.type !== 'text') return;
 
-            // 2. Set system clipboard to selected text
-            const clipboard = St.Clipboard.get_default();
-            clipboard.set_text(St.ClipboardType.CLIPBOARD, item.content);
+        this._isPasting = true;
 
-            // 3. Release lock after clipboard propagation delay
-            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 250, () => {
-                this._isPasting = false;
-                return GLib.SOURCE_REMOVE;
-            });
+        const clipboard = St.Clipboard.get_default();
+        clipboard.set_text(St.ClipboardType.CLIPBOARD, item.content);
 
-            // 4. Simulate paste key combination
-            simulatePaste();
-        }
+        // Release the paste lock after a brief delay for clipboard propagation
+        GLib.timeout_add(GLib.PRIORITY_DEFAULT, 300, () => {
+            this._isPasting = false;
+            return GLib.SOURCE_REMOVE;
+        });
+
+        // Simulate Ctrl+V to paste into the focused application
+        simulatePaste();
     }
 }

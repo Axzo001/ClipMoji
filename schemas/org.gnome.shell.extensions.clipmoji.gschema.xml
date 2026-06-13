@@ -1,35 +1,43 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <schemalist>
   <schema id="org.gnome.shell.extensions.clipmoji" path="/org/gnome/shell/extensions/clipmoji/">
+
     <key name="shortcut-clipboard" type="as">
       <default>['&lt;Control&gt;&lt;Super&gt;v']</default>
       <summary>Shortcut to open Clipboard History</summary>
-      <description>Keyboard shortcut to trigger the Clipboard History popup.</description>
+      <description>Keyboard shortcut(s) to open the Clipboard History popup. Format: &lt;Control&gt;&lt;Super&gt;v. Avoid plain Super+V as it conflicts with GNOME system bindings.</description>
     </key>
+
     <key name="shortcut-emoji" type="as">
-      <default>['&lt;Control&gt;&lt;Super&gt;period', '&lt;Control&gt;&lt;Super&gt;space']</default>
-      <summary>Shortcut to open Emoji Picker</summary>
-      <description>Keyboard shortcut to trigger the Emoji Picker popup.</description>
+      <default>['&lt;Control&gt;&lt;Super&gt;period']</default>
+      <summary>Shortcut to open Emoji / Symbol Picker</summary>
+      <description>Keyboard shortcut(s) to open the Emoji, Kaomoji and Symbol picker popup.</description>
     </key>
+
     <key name="history-size" type="i">
-      <default>25</default>
+      <default>50</default>
+      <range min="5" max="200"/>
       <summary>Clipboard History size</summary>
-      <description>Maximum number of items to keep in the clipboard history.</description>
+      <description>Maximum number of non-pinned items to keep in the clipboard history.</description>
     </key>
+
     <key name="tenor-api-key" type="s">
-      <default>""</default>
+      <default>''</default>
       <summary>Tenor API Key</summary>
-      <description>API key for Tenor GIF search. Leave empty to disable GIF search or fallback to public search.</description>
+      <description>API key for Tenor GIF search. Get a free key at https://tenor.com/gifapi</description>
     </key>
+
     <key name="enable-gifs" type="b">
-      <default>true</default>
-      <summary>Enable GIF search</summary>
-      <description>Enable or disable the online GIF search tab in the picker.</description>
+      <default>false</default>
+      <summary>Enable GIF search tab</summary>
+      <description>Show the online Tenor GIF search tab in the popup picker.</description>
     </key>
+
     <key name="ignore-sensitive" type="b">
       <default>true</default>
-      <summary>Ignore sensitive data</summary>
-      <description>Do not capture clipboard entries copied from password managers or marked as private.</description>
+      <summary>Ignore sensitive clipboard data</summary>
+      <description>Skip clipboard entries flagged as sensitive by password managers (e.g., KeePassXC, KDE Wallet).</description>
     </key>
+
   </schema>
 </schemalist>
